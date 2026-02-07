@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Scan2Health – Final</title>
+
+<style>
+body{
+  font-family:Arial, sans-serif;
+  background:#eef2f7;
+  padding:20px;
+}
+.container{
+  max-width:800px;
+  margin:auto;
+  background:#fff;
+  padding:25px;
+  border-radius:12px;
+  box-shadow:0 0 18px rgba(0,0,0,.15);
+}
+h2{text-align:center;margin-bottom:10px}
+
+label{font-weight:bold;margin-top:12px;display:block}
+
+input,select,button{
+  width:100%;
+  padding:12px;
+  margin-top:6px;
+  border-radius:6px;
+  border:1px solid #ccc;
+  font-size:15px;
+}
+
+button{
+  background:#2563eb;
+  color:white;
+  border:none;
+  cursor:pointer;
+}
+button:hover{background:#1e40af}
+
+#scannerBox{
+  margin-top:12px;
+  border:3px dashed #2563eb;
+  border-radius:10px;
+  padding:8px;
+}
+
+video{
+  width:100%;
+  border-radius:8px;
+}
+
+.symptoms{
+  display:grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+@media (min-width: 600px){
+  .symptoms{ grid-template-columns: 1fr 1fr; }
+}
+@media (min-width: 900px){
+  .symptoms{ grid-template-columns: 1fr 1fr 1fr; }
+}
+
+.symptom-item{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  padding:10px;
+  border:1px solid #e5e7eb;
+  border-radius:8px;
+  background:#f9fafb;
+}
+
+.symptom-btn{
+  flex:1;
+  padding:12px;
+  border-radius:6px;
+  border:none;
+  font-size:15px;
+  cursor:pointer;
+  color:white;
+  background:#2563eb;
+  transition: background 0.3s;
+}
+.symptom-btn:hover{ background:#1e40af }
+
+.result{
+  margin-top:20px;
+  padding:15px;
+  border-radius:8px;
+  font-size:16px;
+}
+.good{background:#dcfce7;color:#166534}
+.bad{background:#fee2e2;color:#991b1b}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+<h2 id="title">🛒 Scan2Health</h2>
+
+<button onclick="initVoice()">🔓 Enable Voice</button>
+
+<label id="langLabel">Language</label>
+<select id="lang" onchange="switchLang()">
+  <option value="en">English</option>
+  <option value="te">తెలుగు</option>
+  <option value="hi">हिंदी</option>
+</select>
+
+<label id="ageLabel">Age</label>
+<input type="number" id="age">
+
+<label id="diseaseLabel">Disease</label>
+<select id="disease" onchange="loadSymptoms()"></select>
+
+<label id="symptomLabel">Symptoms</label>
+<div class="symptoms" id="symptomBox"></div>
+
+<label id="scanLabel">Scan Product</label>
+<div id="scannerBox">
+  <video id="video"></video>
+</div>
+
+<button onclick="startScan()">📷 Start Scan</button>
+
+<label id="codeLabel">Product Code</label>
+<input id="code">
+
+<button onclick="checkProduct()" id="checkBtn">Check Product</button>
+<button onclick="repeatVoice()" id="repeatBtn">🔁 Repeat Voice</button>
+
+<div id="output"></div>
+</div>
+
+<script src="https://unpkg.com/@zxing/library@latest"></script>
+
+<script>
+/* ---------- LANGUAGE DATA ---------- */
+const uiText={
+ en:{title:"Scan2Health", age:"Age", disease:"Disease", symptoms:"Symptoms", scan:"Scan Product", code:"Product Code", check:"Check Product", repeat:"Repeat Voice"},
+ te:{title:"స్కాన్2హెల్త్", age:"వయసు", disease:"వ్యాధి", symptoms:"లక్షణాలు", scan:"ఉత్పత్తి స్కాన్", code:"ఉత్పత్తి కోడ్", check:"తనిఖీ చేయండి", repeat:"మళ్లీ వినండి"},
+ hi:{title:"स्कैन2हेल्थ", age:"आयु", disease:"बीमारी", symptoms:"लक्षण", scan:"उत्पाद स्कैन", code:"उत्पाद कोड", check:"जाँच करें", repeat:"फिर से सुनें"}
+};
+
+/* ---------- DISEASE + SYMPTOMS ---------- */
+const diseaseData={
+ en:{
+  diabetes:{name:"Diabetes", symptoms:["Blurred Vision","Excessive Thirst","Fatigue","Frequent Urination","Slow Healing","Weight Loss"]},
+  bp:{name:"Blood Pressure", symptoms:["Chest Pain","Dizziness","Fatigue","Headache","Nosebleed"]},
+  kidney:{name:"Kidney Issues", symptoms:["Back Pain","Fatigue","Foamy Urine","Loss of Appetite","Swelling"]},
+  asthma:{name:"Asthma", symptoms:["Chest Tightness","Coughing","Shortness of Breath","Wheezing"]},
+  heart:{name:"Heart Disease", symptoms:["Chest Pain","Fatigue","Irregular Heartbeat","Shortness of Breath","Swelling Legs"]},
+  liver:{name:"Liver Issues", symptoms:["Abdominal Pain","Dark Urine","Jaundice","Nausea","Swelling"]},
+  thyroid:{name:"Thyroid", symptoms:["Dry Skin","Fatigue","Hair Loss","Mood Swings","Weight Change"]},
+  obesity:{name:"Obesity", symptoms:["Fatigue","Joint Pain","Shortness of Breath","Snoring","Weight Gain"]},
+  arthritis:{name:"Arthritis", symptoms:["Fatigue","Joint Pain","Limited Range of Motion","Stiffness","Swelling"]}
+ },
+ te:{
+  diabetes:{name:"మధుమేహం", symptoms:["తీవ్రమైన దాహం","తరచూ మూత్రం","మసక చూపు","అలసట","గమనీయంగా మెలకువ లేదు","బరువు తగ్గడం"]},
+  bp:{name:"రక్తపోటు", symptoms:["తలనొప్పి","తల తిరగడం","ఛాతి నొప్పి","ముక్కు రక్తస్రావం","అలసట"]},
+  kidney:{name:"వృక్క సమస్యలు", symptoms:["వాపు","అలసట","నురుగు మూత్రం","ఆహారం కోల్పోవడం","వెనుక నొప్పి"]},
+  asthma:{name:"అస్తమా", symptoms:["శ్వాస తీసుకోవడంలో ఇబ్బంది","గొంతులో సొరలు","ఉబ్బసం","ఛాతి రక్తం"]},
+  heart:{name:"హృదయ రోగం", symptoms:["ఛాతి నొప్పి","శ్వాస తీసుకోవడంలో ఇబ్బంది","అలసట","కాలి వాపు","గుండె అసమాన ముడతలు"]},
+  liver:{name:"కాలేయ సమస్యలు", symptoms:["జాండిస్","ఉపరితల నొప్పి","వాపు","మలబద్ధకం","గాఢ మలము"]},
+  thyroid:{name:"థైరాయిడ్", symptoms:["అలసట","బరువు మార్పు","చుండ్రం జుట్టు","ఎండిపోయిన చర్మం","మూడ్ మార్పులు"]},
+  obesity:{name:"స్థూలత్వం", symptoms:["అలసట","జోడు నొప్పి","శ్వాస తీసుకోవడంలో ఇబ్బంది","ముక్కు శబ్దం","బరువు పెరగడం"]},
+  arthritis:{name:"ఆర్థరైటిస్", symptoms:["అలసట","జోడు నొప్పి","చలనం పరిమితం","గట్టిగా ఉండటం","వాపు"]}
+ },
+ hi:{
+  diabetes:{name:"मधुमेह", symptoms:["अत्यधिक प्यास","बार-बार पेशाब","धुंधली दृष्टि","धीरे घाव भरना","थकान","वजन घटना"]},
+  bp:{name:"ब्लड प्रेशर", symptoms:["सिरदर्द","चक्कर","सीने में दर्द","नाक से खून आना","थकान"]},
+  kidney:{name:"किडनी की समस्या", symptoms:["पीठ में दर्द","थकान","झागदार पेशाब","भूख कम होना","सूजन"]},
+  asthma:{name:"दमा", symptoms:["साँस लेने में कठिनाई","खाँसी","साँस की खिंचाई","छाती में कसाव"]},
+  heart:{name:"हृदय रोग", symptoms:["छाती में दर्द","साँस लेने में कठिनाई","थकान","पैरों में सूजन","अनियमित धड़कन"]},
+  liver:{name:"यकृत समस्या", symptoms:["पीलिया","पेट दर्द","सूजन","मतली","गाढ़ा पेशाब"]},
+  thyroid:{name:"थायरॉइड", symptoms:["थकान","वजन में बदलाव","बाल झड़ना","शुष्क त्वचा","मूड में बदलाव"]},
+  obesity:{name:"मोटापा", symptoms:["थकान","जोड़ों में दर्द","साँस लेने में कठिनाई","खर्राटे","वजन बढ़ना"]},
+  arthritis:{name:"गठिया", symptoms:["थकान","जोड़ों में दर्द","सीमित गति","जकड़न","सूजन"]}
+ }
+};
+
+/* ---------- PRODUCT DATABASE ---------- */
+const products={
+ "101":{name:{en:"Sugar",te:"చక్కెర",hi:"चीनी"},food:true,avoid:["diabetes"],alt:{en:"Stevia",te:"స్టీవియా",hi:"स्टीविया"}},
+ "102":{name:{en:"Salt",te:"ఉప్పు",hi:"नमक"},food:true,avoid:["bp","kidney"],alt:{en:"Low Sodium Salt",te:"తక్కువ సోడియం ఉప్పు",hi:"लो सोडियम नमक"}},
+ "999":{food:false}
+};
+
+let voices=[],lastSpeech="";
+
+/* ---------- VOICE ---------- */
+function initVoice(){
+ voices=speechSynthesis.getVoices();
+ alert("Voice enabled");
+}
+speechSynthesis.onvoiceschanged=()=>voices=speechSynthesis.getVoices();
+
+function speak(text){
+ lastSpeech=text;
+ let u=new SpeechSynthesisUtterance(text);
+ let l=lang.value;
+ u.lang=l==="te"?"te-IN":l==="hi"?"hi-IN":"en-IN";
+ let v=voices.find(x=>x.lang===u.lang) || voices[0];
+ if(v)u.voice=v;
+ speechSynthesis.cancel();
+ speechSynthesis.speak(u);
+}
+function repeatVoice(){ if(lastSpeech) speak(lastSpeech); }
+
+/* ---------- UI ---------- */
+function switchLang(){
+ let l=lang.value;
+ let prevDisease = disease.value; // store current disease
+
+ title.innerText=uiText[l].title;
+ ageLabel.innerText=uiText[l].age;
+ diseaseLabel.innerText=uiText[l].disease;
+ symptomLabel.innerText=uiText[l].symptoms;
+ scanLabel.innerText=uiText[l].scan;
+ codeLabel.innerText=uiText[l].code;
+ checkBtn.innerText=uiText[l].check;
+ repeatBtn.innerText=uiText[l].repeat;
+
+ loadDiseases();
+
+ // Restore previous disease if available
+ if(prevDisease && diseaseData[l][prevDisease]){
+   disease.value = prevDisease;
+   loadSymptoms();
+ }
+}
+
+/* ---------- LOAD DISEASES ---------- */
+function loadDiseases(){
+ disease.innerHTML='<option value="">-- Select --</option>';
+ let l=lang.value;
+ for(let d in diseaseData[l]){
+  disease.innerHTML+=`<option value="${d}">${diseaseData[l][d].name}</option>`;
+ }
+ symptomBox.innerHTML="";
+}
+
+/* ---------- LOAD SYMPTOMS ---------- */
+function loadSymptoms(){
+ symptomBox.innerHTML = "";
+ let l = lang.value;
+ let d = disease.value;
+ if(!d) return;
+
+ let symptoms = [...diseaseData[l][d].symptoms].sort();
+
+ symptoms.forEach(s => {
+   let div = document.createElement('div');
+   div.className = "symptom-item";
+   div.innerHTML = `<input type="checkbox" value="${s}"><label>${s}</label>`;
+   symptomBox.appendChild(div);
+ });
+
+ // Button container
+ let btnContainer = document.createElement('div');
+ btnContainer.style.display = "flex";
+ btnContainer.style.gap = "10px";
+ btnContainer.style.marginTop = "10px";
+
+ let selectAllBtn = document.createElement('button');
+ selectAllBtn.className = "symptom-btn";
+ selectAllBtn.textContent = l==="te"?"అన్నీ ఎంచుకోండి":l==="hi"?"सभी चुनें":"Select All";
+ selectAllBtn.onclick = () => {
+   symptomBox.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = true);
+ };
+ btnContainer.appendChild(selectAllBtn);
+
+ let deselectAllBtn = document.createElement('button');
+ deselectAllBtn.className = "symptom-btn";
+ deselectAllBtn.textContent = l==="te"?"అన్నీ రద్దు చేయండి":l==="hi"?"सभी हटाएँ":"Deselect All";
+ deselectAllBtn.onclick = () => {
+   symptomBox.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+ };
+ btnContainer.appendChild(deselectAllBtn);
+
+ symptomBox.appendChild(btnContainer);
+}
+
+/* ---------- SCAN ---------- */
+let reader;
+function startScan(){
+ reader=new ZXing.BrowserMultiFormatReader();
+ reader.decodeFromVideoDevice(null,"video",(res)=>{
+  if(res){
+   code.value=res.text;
+   reader.reset();
+  }
+ });
+}
+
+/* ---------- CHECK PRODUCT ---------- */
+function checkProduct(){
+ let c=code.value;
+ let l=lang.value;
+ let out=output;
+
+ if(!products[c] || !products[c].food){
+  alert(l==="te"?"ఇది ఆహారం కాదు":l==="hi"?"यह भोजन नहीं है":"Not a food item");
+  speak(l==="te"?"ఇది ఆహారం కాదు":l==="hi"?"यह भोजन नहीं है":"This is not a food item");
+  return;
+ }
+
+ let p=products[c];
+ if(p.avoid.includes(disease.value)){
+  let msg=`${p.name[l]} not recommended. Use ${p.alt[l]}`;
+  out.innerHTML=`<div class="result bad">❌ ${msg}</div>`;
+  speak(msg);
+ }else{
+  let msg=`${p.name[l]} is safe to consume`;
+  out.innerHTML=`<div class="result good">✅ ${msg}</div>`;
+  speak(msg);
+ }
+}
+
+/* INIT */
+switchLang();
+</script>
+
+</body>
+</html>
